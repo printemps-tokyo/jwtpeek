@@ -54,6 +54,7 @@ echo "$TOKEN" | jwtpeek                  # read from stdin
 jwtpeek --verify --secret s3cret "$TOKEN"   # verify an HS256 token
 jwtpeek --verify --key public.pem "$TOKEN"  # verify RS*/PS*/ES*
 jwtpeek --now 2026-01-01T00:00Z "$TOKEN"    # evaluate validity at a given time
+jwtpeek --check "$TOKEN"                 # exit non-zero if expired / not yet valid
 jwtpeek --json "$TOKEN"                  # machine-readable
 ```
 
@@ -64,11 +65,15 @@ jwtpeek --json "$TOKEN"                  # machine-readable
 | `--secret <string>` | Shared secret for `HS256`/`HS384`/`HS512` |
 | `--key <file>` | Public key (PEM) for `RS*` / `PS*` / `ES*` |
 | `--now <when>` | Evaluate validity at this time (epoch seconds or ISO) |
+| `--check` | Exit non-zero if the token is expired or not yet valid |
 | `--json` | Output JSON instead of text |
 | `--no-color` | Disable ANSI colors |
 
-When `--verify` is used and the signature does not verify, the exit code is `2`,
-so it fits in scripts and CI.
+The exit code fits scripts and CI: `0` on success, `1` for a usage or decode
+error, `2` when `--verify` is given and the signature does not verify, and `3`
+when `--check` is given and the token is expired or not yet valid. `--check`
+fails only when the token is actively outside its time window; a token with no
+`exp` / `nbf` claims passes (there is nothing to expire).
 
 ## What it shows
 

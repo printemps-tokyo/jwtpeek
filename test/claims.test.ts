@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { humanizeRelative, formatTime, tokenStatus } from "../src/claims.js";
+import { humanizeRelative, formatTime, tokenStatus, passesCheck } from "../src/claims.js";
 
 describe("humanizeRelative", () => {
   it("formats future and past in the largest unit", () => {
@@ -25,5 +25,14 @@ describe("tokenStatus", () => {
     expect(tokenStatus({ nbf: now + 10 }, now).status).toBe("not-yet-valid");
     expect(tokenStatus({ exp: now + 100 }, now).status).toBe("valid");
     expect(tokenStatus({ sub: "x" }, now).status).toBe("no-time-claims");
+  });
+});
+
+describe("passesCheck", () => {
+  it("fails only for tokens outside their time window", () => {
+    expect(passesCheck("valid")).toBe(true);
+    expect(passesCheck("no-time-claims")).toBe(true);
+    expect(passesCheck("expired")).toBe(false);
+    expect(passesCheck("not-yet-valid")).toBe(false);
   });
 });

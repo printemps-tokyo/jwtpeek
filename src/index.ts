@@ -16,6 +16,7 @@ export {
   humanizeRelative,
   formatTime,
   tokenStatus,
+  passesCheck,
 } from "./claims.js";
 export type { TimeView, Status } from "./claims.js";
 

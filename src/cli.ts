@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createPublicKey, type KeyObject } from "node:crypto";
 
 import { parseJwt } from "./decode.js";
+import { tokenStatus, passesCheck } from "./claims.js";
 import { verifyJwt, type VerifyResult } from "./verify.js";
 import { renderJson, renderText } from "./render.js";
 
@@ -21,15 +22,21 @@ Options:
   --secret <string>   Shared secret for HS256/384/512
   --key <file>        Public key (PEM) for RS*/PS*/ES*
   --now <when>        Evaluate validity at this time (epoch seconds or ISO)
+  --check             Exit non-zero if the token is expired or not yet valid
   --json              Output JSON instead of text
   --no-color          Disable ANSI colors
   -h, --help          Show this help
   -v, --version       Show version
 
+Exit codes:
+  0  ok           1  usage / decode error
+  2  --verify failed                3  --check failed (expired / not yet valid)
+
 Examples:
   jwtpeek eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.xxxx
   echo "$TOKEN" | jwtpeek --verify --secret s3cret
   jwtpeek --verify --key public.pem "$TOKEN" --json
+  jwtpeek --check "$TOKEN"   # gate a token's freshness in CI / cron
 `;
 
 async function readVersion(): Promise<string> {
@@ -85,6 +92,7 @@ async function main(): Promise<number> {
         secret: { type: "string" },
         key: { type: "string" },
         now: { type: "string" },
+        check: { type: "boolean", default: false },
         json: { type: "boolean", default: false },
         "no-color": { type: "boolean", default: false },
       },
@@ -139,8 +147,15 @@ async function main(): Promise<number> {
   const color = !values["no-color"] && !process.env.NO_COLOR && process.stdout.isTTY === true;
   process.stdout.write(values.json ? renderJson(jwt, nowSec, verify) : renderText(jwt, nowSec, verify, color));
 
-  // Exit non-zero if verification was requested and failed.
-  return verify && !verify.verified ? 2 : 0;
+  // Exit non-zero if verification was requested and failed (2), then if a
+  // requested --check freshness gate failed (3); otherwise success.
+  if (verify && !verify.verified) {
+    return 2;
+  }
+  if (values.check && !passesCheck(tokenStatus(jwt.payload, nowSec).status)) {
+    return 3;
+  }
+  return 0;
 }
 
 main()

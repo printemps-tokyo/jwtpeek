@@ -74,3 +74,13 @@ export function tokenStatus(payload: Record<string, unknown>, nowSec: number): {
   }
   return { status: "no-time-claims" };
 }
+
+/**
+ * Whether a token passes a `--check` validity gate. Only a token that is
+ * actively outside its time window fails: `expired` and `not-yet-valid` are
+ * failures, while `valid` and `no-time-claims` (a token nothing constrains)
+ * pass. This keeps the gate from rejecting tokens that legitimately omit `exp`.
+ */
+export function passesCheck(status: Status): boolean {
+  return status !== "expired" && status !== "not-yet-valid";
+}
