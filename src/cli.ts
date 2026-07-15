@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createPublicKey, type KeyObject } from "node:crypto";
 
 import { parseJwt } from "./decode.js";
+import { resolveTokenSource } from "./input.js";
 import { tokenStatus, passesCheck } from "./claims.js";
 import { verifyJwt, type VerifyResult } from "./verify.js";
 import { renderJson, renderText } from "./render.js";
@@ -104,7 +105,13 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  const token = (positionals[0] ?? (await readStdin())).trim();
+  const source = resolveTokenSource(positionals[0], process.stdin.isTTY === true);
+  if (source.kind === "none") {
+    process.stderr.write("error: no token given (pass it as an argument or pipe it on stdin)\n");
+    process.stderr.write("usage: jwtpeek [options] [token]   (see jwtpeek --help)\n");
+    return 1;
+  }
+  const token = (source.kind === "arg" ? source.token : await readStdin()).trim();
   if (token === "") {
     process.stderr.write("error: no token given (pass it as an argument or on stdin)\n");
     return 1;
