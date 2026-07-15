@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createHmac, generateKeyPairSync, sign as cryptoSign } from "node:crypto";
 import { parseJwt } from "../src/decode.js";
-import { verifyJwt } from "../src/verify.js";
+import { parsePublicKey, verifyJwt } from "../src/verify.js";
 
 const enc = (o: object): string => Buffer.from(JSON.stringify(o)).toString("base64url");
 
@@ -36,6 +36,59 @@ describe("verifyJwt — ECDSA", () => {
     }).toString("base64url");
     const token = `${signingInput}.${sig}`;
     expect(verifyJwt(parseJwt(token), { key: publicKey }).verified).toBe(true);
+  });
+});
+
+function edToken(privateKey: Parameters<typeof cryptoSign>[2]): string {
+  const signingInput = `${enc({ alg: "EdDSA", typ: "JWT" })}.${enc({ sub: "1" })}`;
+  const sig = cryptoSign(null, Buffer.from(signingInput), privateKey).toString("base64url");
+  return `${signingInput}.${sig}`;
+}
+
+describe("verifyJwt — EdDSA", () => {
+  it("verifies an Ed25519 signature with the matching public key", () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const r = verifyJwt(parseJwt(edToken(privateKey)), { key: publicKey });
+    expect(r.alg).toBe("EdDSA");
+    expect(r.verified).toBe(true);
+  });
+
+  it("rejects a signature from a different key and a tampered payload", () => {
+    const { privateKey } = generateKeyPairSync("ed25519");
+    const other = generateKeyPairSync("ed25519");
+    expect(verifyJwt(parseJwt(edToken(privateKey)), { key: other.publicKey }).verified).toBe(false);
+
+    const { publicKey, privateKey: pk2 } = generateKeyPairSync("ed25519");
+    const [header, , sig] = edToken(pk2).split(".");
+    const tampered = `${header}.${enc({ sub: "2" })}.${sig}`;
+    expect(verifyJwt(parseJwt(tampered), { key: publicKey }).verified).toBe(false);
+  });
+
+  it("notes when the public key is missing", () => {
+    const { privateKey } = generateKeyPairSync("ed25519");
+    const r = verifyJwt(parseJwt(edToken(privateKey)), {});
+    expect(r.verified).toBe(false);
+    expect(r.note).toMatch(/--key/);
+  });
+});
+
+describe("parsePublicKey", () => {
+  it("loads a JWK JSON document (object with kty)", () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const jwk = JSON.stringify(publicKey.export({ format: "jwk" }));
+    const key = parsePublicKey(jwk);
+    expect(key.asymmetricKeyType).toBe("ed25519");
+    expect(verifyJwt(parseJwt(edToken(privateKey)), { key }).verified).toBe(true);
+  });
+
+  it("still loads PEM text", () => {
+    const { publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const pem = publicKey.export({ type: "spki", format: "pem" }).toString();
+    expect(parsePublicKey(pem).asymmetricKeyType).toBe("ec");
+  });
+
+  it("rejects JSON without a kty field", () => {
+    expect(() => parsePublicKey('{"foo":"bar"}')).toThrow();
   });
 });
 

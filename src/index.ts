@@ -20,7 +20,7 @@ export {
 } from "./claims.js";
 export type { TimeView, Status } from "./claims.js";
 
-export { verifyJwt } from "./verify.js";
+export { verifyJwt, parsePublicKey } from "./verify.js";
 export type { VerifyResult } from "./verify.js";
 
 export { renderText, renderJson } from "./render.js";

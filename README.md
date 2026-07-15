@@ -52,7 +52,8 @@ Then run `jwtpeek …` (after `npm link`), or `node dist/cli.js …` from the cl
 jwtpeek "$TOKEN"                         # decode and inspect
 echo "$TOKEN" | jwtpeek                  # read from stdin
 jwtpeek --verify --secret s3cret "$TOKEN"   # verify an HS256 token
-jwtpeek --verify --key public.pem "$TOKEN"  # verify RS*/PS*/ES*
+jwtpeek --verify --key public.pem "$TOKEN"  # verify RS*/PS*/ES*/EdDSA
+jwtpeek --verify --key key.jwk.json "$TOKEN"  # public key as a JWK document
 jwtpeek --now 2026-01-01T00:00Z "$TOKEN"    # evaluate validity at a given time
 jwtpeek --check "$TOKEN"                 # exit non-zero if expired / not yet valid
 jwtpeek --json "$TOKEN"                  # machine-readable
@@ -63,7 +64,7 @@ jwtpeek --json "$TOKEN"                  # machine-readable
 | `[token]` | The JWT (or read it from stdin) |
 | `--verify` | Verify the signature (needs `--secret` or `--key`) |
 | `--secret <string>` | Shared secret for `HS256`/`HS384`/`HS512` |
-| `--key <file>` | Public key (PEM) for `RS*` / `PS*` / `ES*` |
+| `--key <file>` | Public key (PEM or JWK JSON) for `RS*` / `PS*` / `ES*` / `EdDSA` |
 | `--now <when>` | Evaluate validity at this time (epoch seconds or ISO) |
 | `--check` | Exit non-zero if the token is expired or not yet valid |
 | `--json` | Output JSON instead of text |
@@ -82,8 +83,8 @@ fails only when the token is actively outside its time window; a token with no
   relative description, and the token's validity (`VALID` / `EXPIRED` /
   `NOT YET VALID`).
 - Signature verification across the JWS families: `HS*` (HMAC), `RS*` (RSA),
-  `PS*` (RSA-PSS), and `ES*` (ECDSA, IEEE-P1363). `alg: none` is reported as
-  unsigned and insecure.
+  `PS*` (RSA-PSS), `ES*` (ECDSA, IEEE-P1363), and `EdDSA` (Ed25519). `alg:
+  none` is reported as unsigned and insecure.
 
 ## Security
 

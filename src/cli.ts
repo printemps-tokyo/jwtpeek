@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
 import { readFile } from "node:fs/promises";
-import { createPublicKey, type KeyObject } from "node:crypto";
+import { type KeyObject } from "node:crypto";
 
 import { parseJwt } from "./decode.js";
 import { resolveTokenSource } from "./input.js";
 import { tokenStatus, passesCheck } from "./claims.js";
-import { verifyJwt, type VerifyResult } from "./verify.js";
+import { parsePublicKey, verifyJwt, type VerifyResult } from "./verify.js";
 import { renderJson, renderText } from "./render.js";
 
 const HELP = `jwtpeek - decode and inspect a JWT offline
@@ -21,7 +21,7 @@ argument or from stdin. Nothing is sent over the network.
 Options:
   --verify            Verify the signature (needs --secret or --key)
   --secret <string>   Shared secret for HS256/384/512
-  --key <file>        Public key (PEM) for RS*/PS*/ES*
+  --key <file>        Public key (PEM or JWK JSON) for RS*/PS*/ES*/EdDSA
   --now <when>        Evaluate validity at this time (epoch seconds or ISO)
   --check             Exit non-zero if the token is expired or not yet valid
   --json              Output JSON instead of text
@@ -138,7 +138,7 @@ async function main(): Promise<number> {
     let key: KeyObject | undefined;
     if (values.key !== undefined) {
       try {
-        key = createPublicKey(await readFile(values.key, "utf8"));
+        key = parsePublicKey(await readFile(values.key, "utf8"));
       } catch (err) {
         process.stderr.write(`error: cannot read public key "${values.key}": ${(err as Error).message}\n`);
         return 1;
