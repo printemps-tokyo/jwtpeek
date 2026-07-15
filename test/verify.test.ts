@@ -87,8 +87,14 @@ describe("parsePublicKey", () => {
     expect(parsePublicKey(pem).asymmetricKeyType).toBe("ec");
   });
 
-  it("rejects JSON without a kty field", () => {
-    expect(() => parsePublicKey('{"foo":"bar"}')).toThrow();
+  it("rejects JSON without a string kty field", () => {
+    expect(() => parsePublicKey('{"foo":"bar"}')).toThrow(/invalid JWK: missing kty/);
+    expect(() => parsePublicKey('{"kty":123}')).toThrow(/invalid JWK: missing kty/);
+  });
+
+  it("rejects malformed JSON without falling back to PEM", () => {
+    expect(() => parsePublicKey('{"kty":"OKP"')).toThrow(/invalid JWK: not valid JSON/);
+    expect(() => parsePublicKey("{not json}")).toThrow(/invalid JWK: not valid JSON/);
   });
 });
 

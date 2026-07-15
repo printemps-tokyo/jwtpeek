@@ -87,15 +87,18 @@ export function verifyJwt(jwt: Jwt, opts: { secret?: string; key?: KeyObject }):
 export function parsePublicKey(material: string): KeyObject {
   const trimmed = material.trim();
   if (trimmed.startsWith("{")) {
+    // Anything that looks like JSON is treated as a JWK; never fall back to
+    // PEM, which would surface a misleading PEM-parse error instead.
     let parsed: unknown;
     try {
       parsed = JSON.parse(trimmed);
     } catch {
-      parsed = undefined;
+      throw new Error("invalid JWK: not valid JSON");
     }
-    if (typeof parsed === "object" && parsed !== null && typeof (parsed as { kty?: unknown }).kty === "string") {
-      return createPublicKey({ key: parsed as JsonWebKey, format: "jwk" });
+    if (typeof parsed !== "object" || parsed === null || typeof (parsed as { kty?: unknown }).kty !== "string") {
+      throw new Error("invalid JWK: missing kty");
     }
+    return createPublicKey({ key: parsed as JsonWebKey, format: "jwk" });
   }
   return createPublicKey(material);
 }
