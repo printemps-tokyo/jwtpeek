@@ -31,7 +31,7 @@ when you provide the secret or public key.
 
 ## Requirements
 
-- Node.js >= 20
+- Node.js >= 22
 
 ## Install
 
