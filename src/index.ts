@@ -24,3 +24,7 @@ export { verifyJwt, parsePublicKey } from "./verify.js";
 export type { VerifyResult } from "./verify.js";
 
 export { renderText, renderJson } from "./render.js";
+export { isJwe, parseJwe, type Jwe } from "./decode.js";
+export { selectJwk } from "./verify.js";
+export { fetchJwks, allowedJwksUrl } from "./jwks.js";
+export { renderJweText, renderJweJson } from "./render.js";

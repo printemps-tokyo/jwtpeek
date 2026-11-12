@@ -84,8 +84,20 @@ export function verifyJwt(jwt: Jwt, opts: { secret?: string; key?: KeyObject }):
  * Parse public key material into a KeyObject. Accepts PEM text, or a JWK JSON
  * document (an object with a "kty" field) as produced by JWKS endpoints.
  */
-export function parsePublicKey(material: string): KeyObject {
+export function parsePublicKey(material: string, header?: Record<string, unknown>): KeyObject {
   const trimmed = material.trim();
+  if (trimmed.startsWith("{")) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      throw new Error("invalid JWK: not valid JSON");
+    }
+    // A JWK Set ({"keys": [...]}), as a JWKS endpoint serves it.
+    if (typeof parsed === "object" && parsed !== null && Array.isArray((parsed as { keys?: unknown }).keys)) {
+      return createPublicKey({ key: selectJwk(parsed as { keys: unknown[] }, header ?? {}), format: "jwk" });
+    }
+  }
   if (trimmed.startsWith("{")) {
     // Anything that looks like JSON is treated as a JWK; never fall back to
     // PEM, which would surface a misleading PEM-parse error instead.
@@ -101,4 +113,44 @@ export function parsePublicKey(material: string): KeyObject {
     return createPublicKey({ key: parsed as JsonWebKey, format: "jwk" });
   }
   return createPublicKey(material);
+}
+
+/** Key types each JWS algorithm family uses (RFC 7518). */
+function ktyFor(alg: string): string | undefined {
+  if (/^(RS|PS)\d{3}$/.test(alg)) return "RSA";
+  if (/^ES\d{3}K?$/.test(alg)) return "EC";
+  if (alg === "EdDSA" || alg === "Ed25519" || alg === "Ed448") return "OKP";
+  return undefined;
+}
+
+/**
+ * Pick the key for a token from a JWK Set: the one whose `kid` is the
+ * header's `kid`; without a `kid`, the only key that suits the algorithm
+ * (right `kty`, an `alg` that is absent or equal, `use` absent or "sig").
+ * Anything ambiguous is an error rather than a guess.
+ */
+export function selectJwk(jwks: { keys: unknown[] }, header: Record<string, unknown>): JsonWebKey {
+  const keys = jwks.keys.filter((k): k is Record<string, unknown> => typeof k === "object" && k !== null);
+  const kid = typeof header.kid === "string" ? header.kid : undefined;
+  const alg = typeof header.alg === "string" ? header.alg : "";
+  if (kid !== undefined) {
+    const found = keys.filter((k) => k.kid === kid);
+    if (found.length === 1) return found[0] as JsonWebKey;
+    if (found.length > 1) throw new Error(`the JWK Set has ${found.length} keys with kid "${kid}"`);
+    const kids = keys.map((k) => (typeof k.kid === "string" ? k.kid : "(none)")).join(", ");
+    throw new Error(`no key with kid "${kid}" in the JWK Set (it has: ${kids || "no keys"})`);
+  }
+  const kty = ktyFor(alg);
+  const fit = keys.filter(
+    (k) =>
+      (kty === undefined || k.kty === kty) &&
+      (k.alg === undefined || k.alg === alg) &&
+      (k.use === undefined || k.use === "sig"),
+  );
+  if (fit.length === 1) return fit[0] as JsonWebKey;
+  throw new Error(
+    fit.length === 0
+      ? `no key in the JWK Set suits ${alg || "the token"}`
+      : `the token has no kid and ${fit.length} keys in the JWK Set suit ${alg}; pick one with --key`,
+  );
 }

@@ -1,4 +1,4 @@
-import type { Jwt } from "./decode.js";
+import type { Jwe, Jwt } from "./decode.js";
 import { CLAIM_LABELS, TIME_CLAIMS, formatTime, tokenStatus, type Status } from "./claims.js";
 import type { VerifyResult } from "./verify.js";
 
@@ -97,4 +97,33 @@ export function renderJson(jwt: Jwt, nowSec: number, verify: VerifyResult | unde
       2,
     ) + "\n"
   );
+}
+
+/** A JWE as text: its header and part sizes; the payload stays encrypted. */
+export function renderJweText(jwe: Jwe): string {
+  const h = jwe.header;
+  const lines = [
+    "JWE (encrypted token)",
+    "",
+    "Header:",
+    JSON.stringify(h, null, 2),
+    "",
+    `alg: ${String(h.alg ?? "?")}  (how the content key is encrypted or agreed)`,
+    `enc: ${String(h.enc ?? "?")}  (how the content is encrypted)`,
+  ];
+  if (h.kid !== undefined) lines.push(`kid: ${String(h.kid)}`);
+  if (h.zip !== undefined) lines.push(`zip: ${String(h.zip)}  (the plaintext was compressed before encryption)`);
+  if (h.cty !== undefined) lines.push(`cty: ${String(h.cty)}${String(h.cty).toUpperCase() === "JWT" ? "  (a nested JWT is inside)" : ""}`);
+  const s = jwe.sizes;
+  lines.push(
+    `parts: encrypted key ${s.encryptedKey} bytes, IV ${s.iv}, ciphertext ${s.ciphertext}, tag ${s.tag}`,
+    "",
+    "The payload is encrypted; jwtpeek shows the header only and does not decrypt.",
+  );
+  return lines.join("\n") + "\n";
+}
+
+/** A JWE as JSON. */
+export function renderJweJson(jwe: Jwe): string {
+  return JSON.stringify({ type: "JWE", header: jwe.header, sizes: jwe.sizes }, null, 2) + "\n";
 }

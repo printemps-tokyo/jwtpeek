@@ -3,11 +3,12 @@ import { parseArgs } from "node:util";
 import { readFile } from "node:fs/promises";
 import { type KeyObject } from "node:crypto";
 
-import { parseJwt } from "./decode.js";
+import { isJwe, parseJwe, parseJwt } from "./decode.js";
+import { fetchJwks } from "./jwks.js";
 import { resolveTokenSource } from "./input.js";
 import { tokenStatus, passesCheck } from "./claims.js";
 import { parsePublicKey, verifyJwt, type VerifyResult } from "./verify.js";
-import { renderJson, renderText } from "./render.js";
+import { renderJson, renderJweJson, renderJweText, renderText } from "./render.js";
 
 const HELP = `jwtpeek - decode and inspect a JWT offline
 
@@ -16,12 +17,15 @@ Usage:
 
 Decodes a compact JWT's header and payload, explains the time claims and
 validity, and can optionally verify the signature. The token is read from the
-argument or from stdin. Nothing is sent over the network.
+argument or from stdin. The token is never sent anywhere; only --jwks with a
+URL fetches a key set. A five-part encrypted JWE is shown by its header.
 
 Options:
   --verify            Verify the signature (needs --secret or --key)
   --secret <string>   Shared secret for HS256/384/512
-  --key <file>        Public key (PEM or JWK JSON) for RS*/PS*/ES*/EdDSA
+  --key <file>        Public key (PEM, a JWK, or a JWK Set) for RS*/PS*/ES*/EdDSA
+  --jwks <url|file>   A JWK Set to take the key from, by the token's kid
+                      (https only; the only network access jwtpeek makes)
   --now <when>        Evaluate validity at this time (epoch seconds or ISO)
   --check             Exit non-zero if the token is expired or not yet valid
   --json              Output JSON instead of text
@@ -92,6 +96,7 @@ async function main(): Promise<number> {
         verify: { type: "boolean", default: false },
         secret: { type: "string" },
         key: { type: "string" },
+        jwks: { type: "string" },
         now: { type: "string" },
         check: { type: "boolean", default: false },
         json: { type: "boolean", default: false },
@@ -126,6 +131,23 @@ async function main(): Promise<number> {
     return 1;
   }
 
+  if (isJwe(token)) {
+    if (values.verify || values.secret !== undefined || values.key !== undefined || values.jwks !== undefined || values.check) {
+      process.stderr.write(
+        "error: this is an encrypted JWE; jwtpeek shows its header but cannot verify, decrypt or check it\n",
+      );
+      return 1;
+    }
+    try {
+      const jwe = parseJwe(token);
+      process.stdout.write(values.json ? renderJweJson(jwe) : renderJweText(jwe));
+      return 0;
+    } catch (err) {
+      process.stderr.write(`error: ${(err as Error).message}\n`);
+      return 1;
+    }
+  }
+
   let jwt;
   try {
     jwt = parseJwt(token);
@@ -135,11 +157,23 @@ async function main(): Promise<number> {
   }
 
   let verify: VerifyResult | undefined;
-  if (values.verify || values.secret !== undefined || values.key !== undefined) {
+  if (values.key !== undefined && values.jwks !== undefined) {
+    process.stderr.write("error: use either --key or --jwks\n");
+    return 1;
+  }
+  if (values.verify || values.secret !== undefined || values.key !== undefined || values.jwks !== undefined) {
     let key: KeyObject | undefined;
-    if (values.key !== undefined) {
+    if (values.jwks !== undefined) {
       try {
-        key = parsePublicKey(await readFile(values.key, "utf8"));
+        const text = /^https?:\/\//i.test(values.jwks) ? await fetchJwks(values.jwks) : await readFile(values.jwks, "utf8");
+        key = parsePublicKey(text, jwt.header);
+      } catch (err) {
+        process.stderr.write(`error: --jwks: ${(err as Error).message}\n`);
+        return 1;
+      }
+    } else if (values.key !== undefined) {
+      try {
+        key = parsePublicKey(await readFile(values.key, "utf8"), jwt.header);
       } catch (err) {
         process.stderr.write(`error: cannot read public key "${values.key}": ${(err as Error).message}\n`);
         return 1;

@@ -56,3 +56,34 @@ export function parseJwt(token: string): Jwt {
     signature,
   };
 }
+
+/**
+ * A JWE in compact form (RFC 7516, section 7.1): five parts, of which only
+ * the protected header is readable without the key. The other parts are
+ * described by their size.
+ */
+export interface Jwe {
+  header: Record<string, unknown>;
+  /** Decoded byte lengths of the encrypted key, IV, ciphertext and tag. */
+  sizes: { encryptedKey: number; iv: number; ciphertext: number; tag: number };
+}
+
+/** Whether a token is a compact JWE (five dot-separated parts). */
+export function isJwe(token: string): boolean {
+  return token.trim().split(".").length === 5;
+}
+
+/** Parse a compact JWE's header and part sizes. Throws on malformed input. */
+export function parseJwe(token: string): Jwe {
+  const parts = token.trim().split(".");
+  if (parts.length !== 5) {
+    throw new Error(`a compact JWE has 5 dot-separated parts (got ${parts.length})`);
+  }
+  const [h, k, iv, c, t] = parts as [string, string, string, string, string];
+  const header = decodeJsonSegment(h, "JWE header");
+  if (typeof header.enc !== "string") {
+    throw new Error('the JWE header has no "enc" (content encryption algorithm)');
+  }
+  const len = (s: string): number => base64UrlDecode(s).length;
+  return { header, sizes: { encryptedKey: len(k), iv: len(iv), ciphertext: len(c), tag: len(t) } };
+}
