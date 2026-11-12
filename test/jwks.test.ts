@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createServer } from "node:http";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { generateKeyPairSync, sign as cryptoSign, type KeyObject } from "node:crypto";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   allowedJwksUrl,
   fetchJwks,
@@ -81,33 +76,4 @@ describe("JWE", () => {
     expect(() => parseJwe(`${b64u('{"alg":"dir"}')}.a.b.c.d`)).toThrow(/"enc"/);
   });
 
-  it("is shown by the CLI, which refuses to verify it", async () => {
-    const run = promisify(execFile);
-    const cli = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "cli.js");
-    const out = await run("node", [cli, "--no-color", token]);
-    expect(out.stdout).toContain("JWE (encrypted token)");
-    expect(out.stdout).toContain("enc: A256GCM");
-    const err = await run("node", [cli, "--check", token]).catch((e: { code: number; stderr: string }) => e);
-    expect((err as { code: number }).code).toBe(1);
-    expect((err as { stderr: string }).stderr).toContain("encrypted JWE");
-  });
-});
-
-describe("--jwks over HTTP", () => {
-  it("fetches the set and verifies by kid", async () => {
-    const server = createServer((_req, res) => {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(jwks));
-    });
-    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
-    try {
-      const port = (server.address() as { port: number }).port;
-      const token = rsToken(a.privateKey, { alg: "RS256", kid: "a" }, { sub: "1" });
-      const cli = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "cli.js");
-      const out = await promisify(execFile)("node", [cli, "--json", "--jwks", `http://127.0.0.1:${port}/jwks`, token]);
-      expect(JSON.parse(out.stdout).signature.verified).toBe(true);
-    } finally {
-      await new Promise((done) => server.close(done));
-    }
-  });
 });

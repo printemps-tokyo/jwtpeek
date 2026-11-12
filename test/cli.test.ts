@@ -35,3 +35,41 @@ describe("cli argument parsing", () => {
     expect(err.stderr ?? "").toContain("--help");
   });
 });
+
+// The CLI end to end for JWE and --jwks (built above, before these run).
+import { createServer } from "node:http";
+import { generateKeyPairSync, sign as cryptoSign } from "node:crypto";
+
+describe("cli: JWE and --jwks", () => {
+  const b64u = (b: Buffer | string): string => Buffer.from(b).toString("base64url");
+  const header = "eyJhbGciOiJSU0EtT0FFUCIsImVuYyI6IkEyNTZHQ00ifQ";
+  const token = `${header}.${b64u(Buffer.alloc(256))}.${b64u(Buffer.alloc(12))}.${b64u(Buffer.alloc(100))}.${b64u(Buffer.alloc(16))}`;
+
+  it("shows a JWE and refuses to check it", async () => {
+    const out = await pexecFile("node", [cliPath, "--no-color", token]);
+    expect(out.stdout).toContain("JWE (encrypted token)");
+    expect(out.stdout).toContain("enc: A256GCM");
+    const err = await pexecFile("node", [cliPath, "--check", token]).catch((e: { code: number; stderr: string }) => e);
+    expect((err as { code: number }).code).toBe(1);
+    expect((err as { stderr: string }).stderr).toContain("encrypted JWE");
+  });
+
+  it("fetches a JWK Set over HTTP and verifies by kid", async () => {
+    const k = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const jwks = { keys: [{ ...k.publicKey.export({ format: "jwk" }), kid: "a", alg: "RS256" }] };
+    const input = `${b64u(JSON.stringify({ alg: "RS256", kid: "a" }))}.${b64u(JSON.stringify({ sub: "1" }))}`;
+    const jwt = `${input}.${b64u(cryptoSign("sha256", Buffer.from(input), k.privateKey))}`;
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(jwks));
+    });
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    try {
+      const port = (server.address() as { port: number }).port;
+      const out = await pexecFile("node", [cliPath, "--json", "--jwks", `http://127.0.0.1:${port}/jwks`, jwt]);
+      expect(JSON.parse(out.stdout).signature.verified).toBe(true);
+    } finally {
+      await new Promise((done) => server.close(done));
+    }
+  });
+});
